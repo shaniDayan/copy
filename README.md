@@ -1,140 +1,176 @@
-#! /bin/bash
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-REDBG='\e[41m'
-GREENBG='\e[42m'
-BLUEBG='\e[44m'
-NC='\033[0m' # No Color
-
-KEEP_ORIG=1
-TASKS=${TASKS:-20}
-TIMEOUT=60
-TESTS_INPUT=`pwd`/tests/inputs
-TESTS_GLOB=$TESTS_INPUT/${1:-test_*}
-TESTS_OUTPUT=`pwd`/tests/outputs
-TESTS_EXPECTED=`pwd`/tests/expected
-FORK_PRELOAD=`pwd`/tests/runner/preload/fork_preload.so
-CLEANER="python3 `pwd`/tests/runner/output_cleaner.py"
-SMASH=`pwd`/smash
-RUNNER=`pwd`/tests/runner/runner
-TMP_FOLDER=/tmp/smash_test
-KEEP_ORIG=${KEEP_ORIG:-0}
-VALGRIND=${VALGRIND:-0}
-VALGRIND_PATH=`which valgrind`
-VALGRIND_OK_LINE="All heap blocks were freed -- no leaks are possible"
-
-# Debug: Print key variables
-echo "Runner: $RUNNER"
-echo "Smash: $SMASH"
-echo "Test Input Directory: $TESTS_INPUT"
-echo "Test Glob: $TESTS_GLOB"
-echo "Temporary Folder: $TMP_FOLDER"
-echo "Valgrind Path: $VALGRIND_PATH"
-
-echo "Checking Smash executable permissions:"
-ls -l $SMASH
-
-mkdir -p $TESTS_OUTPUT
-rm -rf $TMP_FOLDER
-cp -r ./tests/required_folder $TMP_FOLDER
-cd $TMP_FOLDER
-
-for test in $TESTS_GLOB; do
-    while jobs=`jobs -p | wc -w` && [[ $jobs -ge $TASKS ]]; do
-        sleep 0.1
-        jobs > /dev/null # for some reason without this line the loop is sometimes infinite...
-    done
-    test=$(basename -- "$test" .txt)
-    echo "Running test: $test"
-    if [ $VALGRIND -eq 0 ] ; then 
-        echo "Command: $RUNNER $SMASH < $TESTS_INPUT/$test.txt > $TESTS_OUTPUT/$test.out"
-        $RUNNER $SMASH < $TESTS_INPUT/$test.txt > $TESTS_OUTPUT/$test.out 2>$TESTS_OUTPUT/$test.err &
-    else
-        echo "Command with Valgrind: $VALGRIND_PATH --leak-check=full ..."
-        $RUNNER $VALGRIND_PATH --leak-check=full --show-reachable=yes --num-callers=20 \
-        --track-fds=yes --log-file=$TESTS_OUTPUT/$test.valgrind --child-silent-after-fork=yes \
-        $SMASH < $TESTS_INPUT/$test.txt > $TESTS_OUTPUT/$test.out 2>$TESTS_OUTPUT/$test.err &
-    fi
-    if [ $? -ne 0 ]; then
-        echo "${RED}Error executing test: $test${NC}"
-    fi
-    echo "Test $test submitted as background job."
-done
-
-echo "\n\nWaiting for all jobs to complete"
-while jobs=`jobs | wc -l` && [[ $jobs -gt 0 ]]; do
-    sleep 0.1
-    jobs > /dev/null # for some reason without this line the loop is sometimes infinite...
-done
-
-do_diff()
-{
-    status=0
-    if [ $VALGRIND -eq 0 ] ; then
-        echo "#:TEST NAME:STDOUT:STDERR\n"
-    else
-        echo "#:TEST NAME:STDOUT:STDERR:VALGRIND\n"
-    fi
-    i=0
-    for test in $TESTS_GLOB; do
-        test=$(basename -- "$test" .txt)
-        timeout $TIMEOUT $CLEANER $TESTS_OUTPUT/$test.out $TESTS_OUTPUT/$test.err
-        if [ $KEEP_ORIG -eq 0 ] ; then
-            rm -f $TESTS_OUTPUT/$test.out $TESTS_OUTPUT/$test.err
-        fi
-        fg_file="$TESTS_OUTPUT/test_fg.out.processed"
-        if [[ -f "$fg_file" ]]; then
-            sed -i -E 's/(& )[0-9]+/\12/' "$fg_file"
-        fi
-        output_result="${YELLOW}MISSING${NC}"
-        if [ -f "$TESTS_EXPECTED/$test.out.exp" ]; then
-            if [ "`diff -q --strip-trailing-cr $TESTS_EXPECTED/$test.out.exp $TESTS_OUTPUT/$test.out.processed`" ]; then
-                output_result="${RED}FAILED${NC}"
-                if [ "$VSCODE_IPC_HOOK_CLI" ]; then
-                    code --diff $TESTS_EXPECTED/$test.out.exp $TESTS_OUTPUT/$test.out.processed
-                fi
-                status=1
-            else
-                output_result="${GREEN}PASSED${NC}"
-            fi
-        fi
-        err_result="${YELLOW}MISSING${NC}"
-        if [ -f "$TESTS_EXPECTED/$test.err.exp" ]; then
-            if [ "`diff -q --strip-trailing-cr $TESTS_EXPECTED/$test.err.exp $TESTS_OUTPUT/$test.err.processed`" ]; then
-                err_result="${RED}FAILED${NC}"
-                if [ "$VSCODE_IPC_HOOK_CLI" ]; then
-                    code --diff $TESTS_EXPECTED/$test.err.exp $TESTS_OUTPUT/$test.err.processed
-                fi
-                status=1
-            else
-                err_result="${GREEN}PASSED${NC}"
-            fi
-        fi
-        if [ $VALGRIND -ne 0 ] ; then
-            if grep -q "$VALGRIND_OK_LINE" $TESTS_OUTPUT/$test.valgrind ; then
-                valgrind_result=":${GREEN}PASSED${NC}"
-            else
-                valgrind_result=":${RED}FAILED${NC}"
-                status=1
-            fi
-        fi
-        (( i++ ))
-        echo "$i:$test:$output_result:$err_result$valgrind_result\n"
-    done
-    return $status
-}
-
-# now do diff
-output="$(do_diff)"
-status=$?
-echo -e $output | column -t -s ":"
-
-if [ $status -eq 0 ]; then
-    echo -e "${GREENBG}ALL PASSED!${NC}"
-    exit 0
-else
-    echo -e "${REDBG}FAILED${NC}"
-    exit 1
-fi
+sudo bash ./tests/runner/runner2.sh
+Runner: /home/student/Desktop/OS_WET1-main/tests/runner/runner
+Smash: /home/student/Desktop/OS_WET1-main/smash
+Test Input Directory: /home/student/Desktop/OS_WET1-main/tests/inputs
+Test Glob: /home/student/Desktop/OS_WET1-main/tests/inputs/test_*
+Temporary Folder: /tmp/smash_test
+Valgrind Path: 
+Checking Smash executable permissions:
+ls: cannot access '/home/student/Desktop/OS_WET1-main/smash': No such file or directory
+Running test: test_1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_1.out
+Test test_1 submitted as background job.
+Running test: test_2020_chprompt
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_2020_chprompt.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_2020_chprompt.out
+Test test_2020_chprompt submitted as background job.
+Running test: test_2020_jobs
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_2020_jobs.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_2020_jobs.out
+Test test_2020_jobs submitted as background job.
+Running test: test_2020_kill
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_2020_kill.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_2020_kill.out
+Test test_2020_kill submitted as background job.
+Running test: test_2020_redirect
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_2020_redirect.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_2020_redirect.out
+Test test_2020_redirect submitted as background job.
+Running test: test_2020_showpid
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_2020_showpid.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_2020_showpid.out
+Test test_2020_showpid submitted as background job.
+Running test: test_chprompt
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_chprompt.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_chprompt.out
+Test test_chprompt submitted as background job.
+Running test: test_external1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_external1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_external1.out
+Test test_external1 submitted as background job.
+Running test: test_fg2
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_fg2.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_fg2.out
+Test test_fg2 submitted as background job.
+Running test: test_fg3
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_fg3.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_fg3.out
+Test test_fg3 submitted as background job.
+Running test: test_fg4
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_fg4.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_fg4.out
+Test test_fg4 submitted as background job.
+Running test: test_fg5
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_fg5.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_fg5.out
+Test test_fg5 submitted as background job.
+Running test: test_fg_errors
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_fg_errors.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_fg_errors.out
+Test test_fg_errors submitted as background job.
+Running test: test_fg
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_fg.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_fg.out
+Test test_fg submitted as background job.
+Running test: test_input1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_input1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_input1.out
+Test test_input1 submitted as background job.
+Running test: test_jobs1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_jobs1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_jobs1.out
+Test test_jobs1 submitted as background job.
+Running test: test_jobs2
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_jobs2.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_jobs2.out
+Test test_jobs2 submitted as background job.
+Running test: test_jobs4
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_jobs4.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_jobs4.out
+Test test_jobs4 submitted as background job.
+Running test: test_jobs
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_jobs.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_jobs.out
+Test test_jobs submitted as background job.
+Running test: test_kill1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_kill1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_kill1.out
+Test test_kill1 submitted as background job.
+Running test: test_kill5
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_kill5.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_kill5.out
+Test test_kill5 submitted as background job.
+Running test: test_kill_errors
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_kill_errors.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_kill_errors.out
+Test test_kill_errors submitted as background job.
+Running test: test_kill_jobs
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_kill_jobs.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_kill_jobs.out
+Test test_kill_jobs submitted as background job.
+Running test: test_params1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_params1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_params1.out
+Test test_params1 submitted as background job.
+Running test: test_pwd1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_pwd1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_pwd1.out
+Test test_pwd1 submitted as background job.
+Running test: test_pwd
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_pwd.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_pwd.out
+Test test_pwd submitted as background job.
+Running test: test_quitkill1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_quitkill1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_quitkill1.out
+Test test_quitkill1 submitted as background job.
+Running test: test_quitkill2
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_quitkill2.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_quitkill2.out
+Test test_quitkill2 submitted as background job.
+Running test: test_quitkill3
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_quitkill3.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_quitkill3.out
+Test test_quitkill3 submitted as background job.
+Running test: test_quitkill4
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_quitkill4.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_quitkill4.out
+Test test_quitkill4 submitted as background job.
+Running test: test_quitnojobs1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_quitnojobs1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_quitnojobs1.out
+Test test_quitnojobs1 submitted as background job.
+Running test: test_quitnojobs2
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_quitnojobs2.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_quitnojobs2.out
+Test test_quitnojobs2 submitted as background job.
+Running test: test_redirection1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_redirection1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_redirection1.out
+Test test_redirection1 submitted as background job.
+Running test: test_redirection3
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_redirection3.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_redirection3.out
+Test test_redirection3 submitted as background job.
+Running test: test_redirection_permissions
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_redirection_permissions.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_redirection_permissions.out
+Test test_redirection_permissions submitted as background job.
+Running test: test_showpid1
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_showpid1.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_showpid1.out
+Test test_showpid1 submitted as background job.
+Running test: test_showpid2
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_showpid2.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_showpid2.out
+Test test_showpid2 submitted as background job.
+Running test: test_tail_new_line
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_tail_new_line.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_tail_new_line.out
+Test test_tail_new_line submitted as background job.
+Running test: test_tail
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_tail.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_tail.out
+Test test_tail submitted as background job.
+Running test: test_touch_invalid_args_amount
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_touch_invalid_args_amount.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_touch_invalid_args_amount.out
+Test test_touch_invalid_args_amount submitted as background job.
+Running test: test_touch_no_file
+Command: /home/student/Desktop/OS_WET1-main/tests/runner/runner /home/student/Desktop/OS_WET1-main/smash < /home/student/Desktop/OS_WET1-main/tests/inputs/test_touch_no_file.txt > /home/student/Desktop/OS_WET1-main/tests/outputs/test_touch_no_file.out
+Test test_touch_no_file submitted as background job.
+\n\nWaiting for all jobs to complete
+#    TEST NAME                       STDOUT  STDERR
+ 1   test_1                          FAILED  FAILED
+ 2   test_2020_chprompt              FAILED  FAILED
+ 3   test_2020_jobs                  FAILED  FAILED
+ 4   test_2020_kill                  FAILED  FAILED
+ 5   test_2020_redirect              FAILED  FAILED
+ 6   test_2020_showpid               FAILED  FAILED
+ 7   test_chprompt                   FAILED  FAILED
+ 8   test_external1                  FAILED  FAILED
+ 9   test_fg2                        FAILED  FAILED
+ 10  test_fg3                        FAILED  FAILED
+ 11  test_fg4                        FAILED  FAILED
+ 12  test_fg5                        FAILED  FAILED
+ 13  test_fg_errors                  FAILED  FAILED
+ 14  test_fg                         FAILED  FAILED
+ 15  test_input1                     FAILED  FAILED
+ 16  test_jobs1                      FAILED  FAILED
+ 17  test_jobs2                      FAILED  FAILED
+ 18  test_jobs4                      FAILED  FAILED
+ 19  test_jobs                       FAILED  FAILED
+ 20  test_kill1                      FAILED  FAILED
+ 21  test_kill5                      FAILED  FAILED
+ 22  test_kill_errors                FAILED  FAILED
+ 23  test_kill_jobs                  FAILED  FAILED
+ 24  test_params1                    FAILED  FAILED
+ 25  test_pwd1                       FAILED  FAILED
+ 26  test_pwd                        FAILED  FAILED
+ 27  test_quitkill1                  FAILED  FAILED
+ 28  test_quitkill2                  FAILED  FAILED
+ 29  test_quitkill3                  FAILED  FAILED
+ 30  test_quitkill4                  FAILED  FAILED
+ 31  test_quitnojobs1                FAILED  FAILED
+ 32  test_quitnojobs2                FAILED  FAILED
+ 33  test_redirection1               FAILED  FAILED
+ 34  test_redirection3               FAILED  FAILED
+ 35  test_redirection_permissions    FAILED  FAILED
+ 36  test_showpid1                   FAILED  FAILED
+ 37  test_showpid2                   FAILED  FAILED
+ 38  test_tail_new_line              FAILED  FAILED
+ 39  test_tail                       FAILED  FAILED
+ 40  test_touch_invalid_args_amount  FAILED  FAILED
+ 41  test_touch_no_file              FAILED  FAILED
+FAILED
